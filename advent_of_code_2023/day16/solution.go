@@ -144,7 +144,7 @@ func countEnergized(field []string, startBeam Beam) int {
 	height, width := len(field), len(field[0])
 
 	beams := []Beam{startBeam}
-	energized := make(map[Point]bool, 0)
+	energized := make(map[Point]int, 0)
 
 	prevEnergizedCount := 0
 	stabilizedCount := 0
@@ -152,7 +152,10 @@ func countEnergized(field []string, startBeam Beam) int {
 		newBeamsSet := make(map[Beam]bool, 0)
 
 		for _, beam := range beams {
-			energized[Point{row: beam.row, col: beam.col}] = true
+			if prevDir, ok := energized[Point{row: beam.row, col: beam.col}]; ok && prevDir == beam.dir {
+				continue
+			}
+			energized[Point{row: beam.row, col: beam.col}] = beam.dir
 
 			var changedBeams []Beam
 			switch field[beam.row][beam.col] {

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strconv"
 )
 
 func getInputData() *[][]byte {
@@ -21,58 +22,86 @@ func getInputData() *[][]byte {
 	return &numbers
 }
 
-func getInt(s []byte) int {
-	var res int
-	for _, v := range s {
-		res <<= 1
-		res |= int(v)
-	}
-	return res
-}
-
-func getMostCommonValue(index int, numbers *[][]byte, controlByte byte) bool {
+func getMostCommonValue(index int, numbers *[][]byte) byte {
 	count := 0
 
 	for _, row := range *numbers {
-		if row[index] == controlByte {
+		if row[index] == '1' {
 			count += 1
 		} else {
 			count -= 1
 		}
 	}
 
-	return count >= 0
+	if count >= 0 {
+		return '1'
+	}
+
+	return '0'
 }
 
 func getRate(numbers *[][]byte, controlByte byte) int {
 	rate := []byte{}
 
 	for i := 0; i < len((*numbers)[0]); i++ {
-		mostCommon := getMostCommonValue(i, numbers, controlByte)
+		mostCommon := getMostCommonValue(i, numbers)
 
-		if mostCommon {
-			rate = append(rate, 1)
+		if mostCommon == controlByte {
+			rate = append(rate, '1')
 		} else {
-			rate = append(rate, 0)
+			rate = append(rate, '0')
 		}
 	}
 
-	intRate := getInt(rate)
+	decimal, _ := strconv.ParseInt(string(rate), 2, 64)
 
-	return intRate
+	return int(decimal)
+}
+
+func powerConsumption(numbers [][]byte) int {
+	gammaRate := getRate(&numbers, '1')
+	epsilonRate := getRate(&numbers, '0')
+
+	return gammaRate * epsilonRate
+}
+
+func getRatingByCriteria(numbers [][]byte, bitCriteria func(byte, byte) bool) int {
+	for bitPosition := 0; bitPosition < len(numbers[0]); bitPosition++ {
+		if len(numbers) == 1 {
+			break
+		}
+		mostCommon := getMostCommonValue(bitPosition, &numbers)
+
+		newNumbers := [][]byte{}
+
+		for _, number := range numbers {
+			if bitCriteria(number[bitPosition], mostCommon) {
+				newNumbers = append(newNumbers, number)
+			}
+		}
+
+		numbers = newNumbers
+	}
+
+	decimal, _ := strconv.ParseInt(string(numbers[0]), 2, 64)
+
+	return int(decimal)
+}
+
+func lifeSupportRating(numbers [][]byte) int {
+	oxygenGeneratorRating := getRatingByCriteria(numbers, func(b1, b2 byte) bool {
+		return b1 == b2
+	})
+
+	co2ScrubberRating := getRatingByCriteria(numbers, func(b1, b2 byte) bool {
+		return b1 != b2
+	})
+
+	return oxygenGeneratorRating * co2ScrubberRating
 }
 
 func main() {
 	numbers := *getInputData()
-
-	gammaRate := getRate(&numbers, 49)
-	epsilonRate := getRate(&numbers, 48)
-	fmt.Println("Part 1 solution:", gammaRate*epsilonRate)
-
-	filteredNumbers := []byte{}
-	for {
-		if len(numbers) == 1 {
-			break
-		}
-	}
+	fmt.Println("Part 1 solution:", powerConsumption(numbers))
+	fmt.Println("Part 2 solution:", lifeSupportRating(numbers))
 }

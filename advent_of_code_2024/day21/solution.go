@@ -3,9 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"math"
 	"os"
-	"sort"
 	"strconv"
 )
 
@@ -24,101 +22,131 @@ func getInputData() []string {
 	return codes
 }
 
-type Point struct {
-	rowIdx int
-	colIdx int
+const (
+	Horizontal = iota
+	Vertical
+)
+
+type Pos struct {
+	row, col int
 }
 
-type Graph = [][](rune)
-
-var directions = map[Point]rune{
-	{0, -1}: '<',
-	{-1, 0}: '^',
-	{0, 1}:  '>',
-	{1, 0}:  'v',
+type Memo struct {
+	seq   string
+	depth byte
 }
 
-type Paths = map[[2]rune]([]string)
+var dp = map[Memo]int{}  // Memoization map
+var nkpStart = Pos{3, 2} // Numerical keypad start Pos
+var dkpStart = Pos{0, 2} // Directional keypad start Pos
 
-var INVALID_VALUE = 'X'
+// Char to Pos on numeric keypad
+func ctopn(c byte) Pos {
+	if c == '0' {
+		return Pos{3, 1}
+	}
+	if c == 'A' {
+		return nkpStart
+	}
+	row := 2 - ((c - '0' - 1) / 3)
+	col := (c - '0' - 1) % 3
+	return Pos{int(row), int(col)}
+}
 
-func adj(currentPath []Point, graph Graph, visited map[Point]bool) map[Point]rune {
-	currentPoint := currentPath[len(currentPath)-1]
+// Char to Pos on directional keypad
+func ctopd(d byte) Pos {
+	switch d {
+	case '^':
+		return Pos{0, 1}
+	case '<':
+		return Pos{1, 0}
+	case 'v':
+		return Pos{1, 1}
+	case '>':
+		return Pos{1, 2}
+	default:
+		return Pos{0, 2}
+	}
+}
 
-	res := map[Point]rune{}
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
 
-	for dir, dirSym := range directions {
-		nextPoint := Point{currentPoint.rowIdx + dir.rowIdx, currentPoint.colIdx + dir.colIdx}
-
-		if nextPoint.rowIdx < 0 || nextPoint.rowIdx >= len(graph) ||
-			nextPoint.colIdx < 0 || nextPoint.colIdx >= len(graph[0]) ||
-			graph[nextPoint.rowIdx][nextPoint.colIdx] == INVALID_VALUE {
-			continue
+func pathWriter(off, dir int) []byte {
+	var path []byte
+	var c byte
+	if dir == Horizontal {
+		if off < 0 {
+			c = '>'
+		} else {
+			c = '<'
 		}
-
-		if visited, ok := visited[nextPoint]; !ok || visited == false {
-			res[nextPoint] = dirSym
+	} else {
+		if off < 0 {
+			c = 'v'
+		} else {
+			c = '^'
 		}
 	}
+	for i := 0; i < abs(off); i++ {
+		path = append(path, c)
+	}
+	return path
+}
 
+func shortestSeq(src, dst Pos, isNumPad bool) string {
+	var path []byte
+
+	dr := src.row - dst.row
+	dc := src.col - dst.col
+
+	movesV := pathWriter(dr, Vertical)
+	movesH := pathWriter(dc, Horizontal)
+
+	var onGap bool
+	if isNumPad {
+		onGap = (src.row == 3 && dst.col == 0) || (src.col == 0 && dst.row == 3)
+	} else {
+		onGap = (src.col == 0 && dst.row == 0) || (src.row == 0 && dst.col == 0)
+	}
+
+	goingLeft := dst.col < src.col
+
+	if goingLeft != onGap {
+		movesV, movesH = movesH, movesV
+	}
+
+	path = append(append([]byte{}, movesV...), movesH...)
+	path = append(path, 'A')
+	return string(path)
+}
+
+func dfs(memo Memo) int {
+	if v, ok := dp[memo]; ok {
+		return v
+	}
+	if memo.depth == 0 {
+		return len(memo.seq)
+	}
+
+	var res int
+	var path []string
+	prev := dkpStart
+	for _, c := range memo.seq {
+		curr := ctopd(byte(c))
+		path = append(path, shortestSeq(prev, curr, false))
+		prev = curr
+	}
+
+	for _, p := range path {
+		res += dfs(Memo{string(p), memo.depth - 1})
+	}
+	dp[memo] = res
 	return res
-}
-
-func dfs(graph Graph, destination Point, currentPath []Point, currentSequence string, visited map[Point]bool) []string {
-	lastVisited := currentPath[len(currentPath)-1]
-	if lastVisited == destination {
-		return []string{currentSequence}
-	}
-
-	results := []string{}
-	for nextPoint, dirSym := range adj(currentPath, graph, visited) {
-		visited[nextPoint] = true
-
-		currentPath = append(currentPath, nextPoint)
-
-		results = append(
-			results,
-			dfs(
-				graph,
-				destination,
-				currentPath,
-				currentSequence+string(dirSym),
-				visited,
-			)...,
-		)
-
-		currentPath = currentPath[:len(currentPath)-1]
-
-		visited[nextPoint] = false
-	}
-
-	return results
-}
-
-func filterShortestPaths(results []string) []string {
-	filtered := []string{}
-
-	sort.Slice(results, func(i, j int) bool {
-		return len(results[i]) < len(results[j])
-	})
-
-	for i := 0; i < len(results) && len(results[i]) == len(results[0]); i++ {
-		filtered = append(filtered, results[i])
-	}
-
-	return filtered
-}
-
-var numGraph = Graph{
-	{'7', '8', '9'},
-	{'4', '5', '6'},
-	{'1', '2', '3'},
-	{'X', '0', 'A'},
-}
-
-var digitGraph = Graph{
-	{'X', '^', 'A'},
-	{'<', 'v', '>'},
 }
 
 func codeToNum(code string) int {
@@ -134,103 +162,34 @@ func codeToNum(code string) int {
 	return num
 }
 
-func findShortestPathsFor(graph Graph) map[[2]rune]([]string) {
-	shortestPaths := make(map[[2]rune]([]string))
+func solve(codes []string, depth byte) int {
+	var res int
 
-	for startRowIdx := 0; startRowIdx < len(graph); startRowIdx++ {
-		for startColIdx := 0; startColIdx < len(graph[startRowIdx]); startColIdx++ {
-			for finishRowIdx := 0; finishRowIdx < len(graph); finishRowIdx++ {
-				for finishColIdx := 0; finishColIdx < len(graph[finishRowIdx]); finishColIdx++ {
-					if graph[startRowIdx][startColIdx] == INVALID_VALUE ||
-						graph[finishRowIdx][finishColIdx] == INVALID_VALUE {
-						continue
-					}
-					results := dfs(graph, Point{finishRowIdx, finishColIdx}, []Point{{startRowIdx, startColIdx}}, "", map[Point]bool{{startRowIdx, startColIdx}: true})
-
-					shortest := filterShortestPaths(results)
-					shortestPaths[[2]rune{graph[startRowIdx][startColIdx], graph[finishRowIdx][finishColIdx]}] = shortest
-				}
-			}
-		}
-	}
-
-	return shortestPaths
-}
-
-func sequenceForCode(code string, symPaths map[[2]rune]([]string)) []string {
-	prevNumSym := 'A'
-	paths := []string{""}
-
-	for _, currentNumSym := range code {
-		nextPaths := []string{}
-
-		for _, symPath := range symPaths[[2]rune{prevNumSym, currentNumSym}] {
-			for _, p := range paths {
-				nextPaths = append(nextPaths, p+symPath+"A")
-			}
-		}
-		prevNumSym = currentNumSym
-
-		paths = nextPaths
-	}
-
-	return paths
-}
-
-func codeShortestSequence(code string, padCount int, digitPaths map[[2]rune]([]string), numPaths map[[2]rune]([]string)) int {
-	numSequences := sequenceForCode(code, numPaths)
-	fmt.Println(numSequences)
-
-	prevSequences := numSequences
-
-	for i := 0; i < padCount; i++ {
-		nextSequences := []string{}
-
-		for _, sq := range prevSequences {
-			nextSequences = append(nextSequences, sequenceForCode(sq, digitPaths)...)
-		}
-
-		prevSequences = nextSequences
-	}
-
-	// for _, numSequence := range numSequences {
-	// 	digitSequences1 := sequenceForCode(numSequence, digitPaths)
-
-	// 	for _, digitSequence1 := range digitSequences1 {
-	// 		digitSequences2 := sequenceForCode(digitSequence1, digitPaths)
-
-	// 		for _, digitSequence2 := range digitSequences2 {
-	// 			if len(digitSequence2) < shortest {
-	// 				shortest = len(digitSequence2)
-	// 			}
-	// 		}
-	// 	}
-	// }
-
-	shortest := math.MaxInt
-	for _, sq := range prevSequences {
-		if len(sq) < shortest {
-			shortest = len(sq)
-		}
-	}
-
-	return shortest
-}
-
-func solve(codes []string, padCount int) int {
-	digitPaths := findShortestPathsFor(digitGraph)
-
-	numPaths := findShortestPathsFor(numGraph)
-
-	var sum int
+	var codeInt int
 	for _, code := range codes {
-		sum += codeToNum(code) * codeShortestSequence(code, padCount, digitPaths, numPaths)
+		var path []string
+		codeInt = codeToNum(string(code[:len(code)-1]))
+
+		prev := nkpStart
+		for _, c := range code {
+			curr := ctopn(byte(c))
+			path = append(path, shortestSeq(prev, curr, true))
+			prev = curr
+		}
+
+		var pathLen int
+		for _, code := range path {
+			pathLen += dfs(Memo{string(code), depth})
+		}
+		res += pathLen * codeInt
 	}
 
-	return sum
+	return res
 }
 
 func main() {
 	codes := getInputData()
+
 	fmt.Println("Part 1 solution is", solve(codes, 2))
+	fmt.Println("Part 2 solution is", solve(codes, 25))
 }
